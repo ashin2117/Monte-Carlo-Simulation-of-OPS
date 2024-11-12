@@ -1,7 +1,7 @@
 ---
 title: "Monte Carlo Simulation of OPS(On-Base Plus Slugging) Using the Multinomial Distribution"
 author: "Andrew Shin"
-date: "`r Sys.Date()`"
+date: "Oct 15, 2024"
 output: pdf_document
 ---
 
@@ -297,4 +297,8 @@ OPS_den_plot
   Furthermore, another issue arose when I treated each game as an independent event, ignoring the possibility of game-to-game dependencies, such as player fatigue or momentum. In reality, hitting performance can be influenced by previous games, player confidence, or injuries, which introduced dependencies between games that were not captured by my multinomial model. This resulted in overly simplistic projections that failed to reflect the impact of streaks and slumps on OPS.
 
   By applying Monte Carlo simulations to OPS analysis, despite limitations, this study offers a detailed, probabilistic framework for evaluating player performance. This method enhances the ability to estimate better offensive contributions and assess players’ performances, with potential for wide-ranging applications in baseball sabermetrics.
+
+# Citation
+- “Baseball Reference.” Sports Reference, https://www.baseball-reference.com/. Accessed 05 Oct. 2024.
+- “Baseball Savant.” Major League Baseball, https://baseballsavant.mlb.com/. Accessed 05 Oct. 2024.
 
