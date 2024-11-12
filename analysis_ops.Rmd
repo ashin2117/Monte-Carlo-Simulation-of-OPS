@@ -1,0 +1,300 @@
+---
+title: "Monte Carlo Simulation of OPS(On-Base Plus Slugging) Using the Multinomial Distribution"
+author: "Andrew Shin"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(readxl)
+library(knitr)
+
+data <- read_excel("ops_csv.xlsx")
+```
+
+# Abstract
+
+  In modern baseball analytics, sabermetrics plays a crucial role in objectively measuring player performance through advanced statistical metrics. One key metric, On-Base Plus Slugging (OPS), combines On-Base Percentage (OBP) and Slugging Percentage (SLG) to provide a comprehensive view of a player’s offensive capabilities, capturing both their ability to reach base and generate extra-base hits. This study approaches OPS analysis from a probabilistic perspective, modeling both OBP and SLG as outcomes of a multinomial distribution. Each at-bat and plate appearance is considered a trial with multiple possible results, such as singles, doubles, or outs for SLG, and hits, walks, hit by pitch ball, or out for OBP. Using Monte Carlo simulations based on these probabilities, we predict future player performance by estimating OBP and SLG, which are then combined to approximate OPS. This method allows for the probabilistic modeling of offensive outcomes, offering performance evaluation into a player’s expected contribution over the course of a season.
+
+# Introduction
+
+  In modern baseball analytics, sabermetrics plays a crucial role in objectively quantifying player performance using advanced statistical measurements. One of the most widely recognized metrics in recent years is OPS (On-Base Plus Slugging), which combines a player’s on-base percentage (OBP) and slugging percentage (SLG). OPS is highly regarded because it integrates two essential components of offensive performance into a single statistic, capturing a player’s ability both to reach base and to generate extra-base hits. 
+  
+  In Major League Baseball, an OPS of .800 or higher puts a player in the upper echelon of hitters, and the league leader in OPS typically scores near or above 1.000. Players with high OPS values are usually the most valuable offensive contributors in the league.
+  
+  When analyzing OPS from a probabilistic perspective, I came up with the idea that both OBP and SLG can be modeled as a multinomial distribution. In OBP, each plate appearance is considered a trial with four possible outcomes: hit, walk, hit by pitch ball, or out, $OBP = \frac{\#Hit + \#Walks + \#HBP}{(\#At-Bats + \#Walks + \#HBP + \#Sacfly) = \#plate\ apps.}$. Similarly, slugging—calculated as  $\text{SLG} = \frac{1 \times 1B + 2\times 2B + 3\times 3B + 4 \times HR}{\text{At-Bat}}$ —has multiple possible outcomes (singles, doubles, triples, and home runs). Therefore, applying a multinomial distribution is a proper approach to model the various types of hits a player might achieve over the course of a season, reflecting the likelihood of different hit categories in a sequence of independent at-bats. 
+  
+  A Monte Carlo simulation based on players’ stats from March to July allows for player evaluation and comparison through probabilistic analyses, such as CDF plots, density plots, and box plots. These visualizations provide insights into the variability and distribution of player performance, highlighting how likely certain outcomes are across a range of scenarios.
+
+# Methods
+
+### Data Collection
+
+  The data for this analysis was sourced from Baseball Reference, a website that provides up-to-date player statistics from Major League Baseball. I randomly selected the stats of 10 players who stood out to me during the 2024 MLB season. In baseball, the regular season is typically divided into two halves: the first half runs from March to July (All-Star Game), and the second half from August to September. For this analysis, I have split the season accordingly and will use the first-half statistics in a Monte Carlo simulation to predict player performance in the second half of the season.
+  
+### Multinomial Distribution on On-Base Percentage + Slugging Percentage (OPS)
+
+  OBP is calculated as $\frac{\#Hits + \#Walk + \#HBP}{\#Plate\ Appearance}$ in which we have four different possible outcomes with distinct probabilities. Similarly, Slugging percentage is $\frac{\#Singles + \#Doubles + \#Triples + \#Homeruns}{\#At-Bat}$ which have five possible outcomes, including number of other outcomes. Since the multinomial distribution is a generalization of the binomial distribution that allows for more than two possible outcomes, we can model the number of occurrences of different outcomes in a series of independent trials (in this case, the number of plate appearance and at-bats). 
+
+$$
+P(X_1 = x_1, \cdots, X_k = x_k) = \frac{n!}{x_1!\cdots x_k!}p_1^{x_1}\cdots p_k^{x_k}
+$$
+, where:
+
+  - $n$ is the number of trials (in this case, the number of plate appearances and at-bats)
+  
+  - $k_1, \dots, k_i$ are the counts of each possible outcomes ($i = 1, \dots , 4$ in OBP and $i = 1, \dots, 5$ in SLG).
+
+  - $p_1, \dots, p_i$ are the probabilities of each outcomes
+  
+  - $k_1 + \cdots + k_i = n$ (the total number of trials in the sum of all outcomes)
+
+  Based on the stats in the first half of this season, I calculated the probability of each outcome in OBP and will use this for my analysis.
+
+```{r, include=FALSE}
+PA <- data$`AB(MAR-JUL)` + data$`BB(MAR-JUL)` + 
+  data$`HBP(MAR-JUL)` + data$`SF(MAR-JUL)`
+
+obp_probs <- data_frame(Player = data$Player, 
+                    `H/PA` = round(data$`H(MAR-JUL)` / PA, 3), 
+                    `BB/PA` = round(data$`BB(MAR-JUL)` / PA, 3),
+                    `HBP/PA` = round(data$`HBP(MAR-JUL)` / PA, 3),
+                    `OUT/PA` = 1 - (`H/PA` + `BB/PA` + `HBP/PA`))
+x_onbase <- data_frame(Player = obp_probs$Player,
+                         xH = obp_probs$`H/PA` * data$`PA(Aug-Sep)`,
+                       xBB = obp_probs$`BB/PA` * data$`PA(Aug-Sep)`,
+                       xHBP = obp_probs$`HBP/PA` * data$`PA(Aug-Sep)`,
+                       xOUT = obp_probs$`OUT/PA` * data$`PA(Aug-Sep)`)
+
+slg_probs <- data_frame(Player = data$Player, 
+                    `Singles/AB` = round(data$`1B(MAR-JUL)` / data$`AB(MAR-JUL)`, 3), 
+                    `Doubles/AB` = round(data$`2B(MAR-JUL)` / data$`AB(MAR-JUL)`, 3),
+                    `Triples/AB` = round(data$`3B(MAR-JUL)` / data$`AB(MAR-JUL)`, 3),
+                     `Homerun/AB` = round(data$`HR(MAR-JUL)` / data$`AB(MAR-JUL)`, 3),
+                    `Other_outcomes/AB` = 1 - (`Singles/AB` + 
+                                                 `Doubles/AB` + 
+                                                 `Triples/AB` + 
+                                                 `Homerun/AB`))
+```
+
+```{r, , include=TRUE}
+kable(obp_probs)
+```
+
+```{r, include=TRUE}
+kable(slg_probs)
+```
+
+### Assumption
+
+- Each player's probabilities for hitting different types of hits are fixed for the future plate appearances.
+
+- Each plate appearance is independent of the previous one.
+
+- Each game is an independent event, ignoring the possibility of game-to-game dependencies.
+
+# Result
+
+### Monte Carlo Simulation on On-Base Percentage and SLG
+
+  The Monte Carlo simulation repeatedly simulates a fixed number of plate appearances for OBP and at-bats for SLG using the multinomial distribution. In each simulation, we count the occurrences of each event type and compute OBP and SLG for that trial. We set the number of iterations to  n = 10,000, calculating OBP and SLG for each simulation based on the total plate appearances and at-bats.
+
+```{r, include=FALSE}
+set.seed(123)
+n <- 10000
+df_OBP <- data_frame()
+plot_data <- data_frame()
+
+for (i in 1:nrow(data)) {
+  hit <- c()
+  walk <- c()
+  hbp <- c()
+  out <- c()
+  obp <- c()
+  
+  for (j in 1:n) {
+    dist <- rmultinom(1, data$`PA(Aug-Sep)`[i], obp_probs[i, 2:5])
+    hit <- c(hit, dist[1])
+    walk <- c(walk, dist[2])
+    hbp <- c(hbp, dist[3])
+    out <- c(out, dist[4])
+    obp <- c(obp, (dist[1] + dist[2] + dist[3]) / data$`PA(Aug-Sep)`[i])
+  }
+  new_row_1 <- data_frame(Players = data$Player[i], 
+                          Hits = list(hit),
+                          Walks = list(walk),
+                          HBPs = list(hbp),
+                          Outs = list(out),
+                          OBP = list(obp))
+  plot_data <- rbind(plot_data, new_row_1)
+  
+  new_row_2 <- data_frame(Players = data$Player[i],
+                 Hit = mean(hit),
+                 Walk = mean(walk),
+                 HBP = mean(hbp),
+                 Out = mean(out))
+  df_OBP <- rbind(df_OBP, new_row_2)
+}
+monte_carlo_OBP <- data_frame(Player = df_OBP$Players, 
+                              exp_OBP = round((df_OBP$Hit + df_OBP$Walk + df_OBP$HBP) / data$`PA(Aug-Sep)`, 3),
+                              actual_OBP = round((data$`H(Aug-Sep)` + data$`BB(Aug-Sep)` + data$`HBP(Aug-Sep)`) / data$`PA(Aug-Sep)`,3))
+```
+
+```{r, include=TRUE}
+kable(monte_carlo_OBP)
+```
+  
+  The average values from the simulation provide an estimate of the player’s expected performance. In addition to the On-Base Percentage (OBP) estimated through the Monte Carlo simulation, we also have the actual OBP values for players from August to September. By comparing these values, we can observe whether players’ ability to get on base has improved or declined during this period.
+
+```{r, include = FALSE}
+set.seed(123)
+df_SLG <- data_frame()
+plot_SLG <- data_frame()
+
+for (i in 1:nrow(data)) {
+  singles <- c()
+  doubles <- c()
+  triples <- c()
+  homerun <- c()
+  otr_outcomes <- c()
+  slg <- c()
+  
+  for (j in 1:n) {
+    dist <- rmultinom(1, data$`AB(Aug-Sep)`[i], slg_probs[i, 2:6])
+    singles <- c(singles, dist[1])
+    doubles <- c(doubles, dist[2])
+    triples <- c(triples, dist[3])
+    homerun <- c(homerun, dist[4])
+    otr_outcomes <- c(otr_outcomes, dist[5])
+    slg <- c(slg, (dist[1] + 2*dist[2] + 3 *dist[3] + 4*dist[4]) / data$`AB(Aug-Sep)`[i])
+  }
+   
+  new_row1 <- data_frame(Players = data$Player[i], 
+                          Singles = list(singles),
+                          Doubles = list(doubles),
+                          Triples = list(triples),
+                          Homerun = list(homerun),
+                          Other = list(otr_outcomes),
+                         SLG = list(slg))
+  plot_SLG <- rbind(plot_SLG, new_row1)
+  
+  
+  new_row2 <- data_frame(Players = data$Player[i],
+                 Singles = mean(singles),
+                 Doubles = mean(doubles),
+                 Triples = mean(triples),
+                 HR = mean(homerun),
+                 Other_outcomes = mean(otr_outcomes))
+  df_SLG <- rbind(df_SLG, new_row2)
+}
+
+monte_carlo_SLG <- data_frame(Player = df_SLG$Players, 
+                              exp_SLG = (df_SLG$Singles + 2*df_SLG$Doubles +
+                                            3*df_SLG$Triples + 4*df_SLG$HR) / data$`AB(Aug-Sep)`,
+                              actual_SLG = (data$`1B(Aug-Sep)` + 2*data$`2B(Aug-Sep)` +
+                                            3*data$`3B(Aug-Sep)` + 4*data$`HR(Aug-Sep)`) / data$`AB(Aug-Sep)`)
+monte_carlo_SLG
+monte_carlo_OPS <- data_frame(Player = data$Player, 
+                              exp_OPS = monte_carlo_OBP$exp_OBP + monte_carlo_SLG$exp_SLG,
+                              actual_OPS = monte_carlo_OBP$actual_OBP + monte_carlo_SLG$actual_SLG)
+```
+
+```{r}
+kable(monte_carlo_OPS)
+```
+
+### Cumulative Distribution Function (CDF) Plot
+
+  CDF plots allow us to make probabilistic statements about our simulated variable. We can use it to answer questions like "What is the probability of the OPS being above or below a certain value?" or "What is the range of likely outcomes?".
+  
+```{r, include=FALSE}
+OPS_Comp <- data_frame()
+for (i in c(1, 2, 4, 7, 8)) {
+  new_row <- data_frame(Players = data$Player[i], 
+                        OPS = plot_SLG$SLG[[i]] + plot_data$OBP[[i]])
+  OPS_Comp <- rbind(OPS_Comp, new_row)
+} 
+
+# OPS density plot
+ OPS_den_plot <- ggplot(OPS_Comp, aes(x = OPS, color=Players)) +
+  geom_density() +
+  labs(title = "Density Plot of OPS", x = "OPS", y = "Density") +
+  theme_minimal()
+ 
+OPS_Comp <- data_frame()
+for (i in c(3, 5, 6, 9, 10)) {
+  new_row <- data_frame(Players = data$Player[i], 
+                        OPS = plot_SLG$SLG[[i]] + plot_data$OBP[[i]])
+  OPS_Comp <- rbind(OPS_Comp, new_row)
+} 
+
+# OPS CDF plot
+OPS_cdf_plot <- ggplot(OPS_Comp, aes(x = OPS, color=Players)) +
+  stat_ecdf() +
+  labs(title = "CDF Plot of OPS", x = "OPS", y = "Probability") +
+  theme_minimal()
+```
+
+```{r}
+OPS_cdf_plot
+```
+
+
+  As shown in the plot, the NY Yankees Aaron Judge’s median OPS (where  $y = 0.5$) is  $P(X_{Judge} \le 0.5) = 1.143$ , meaning he is likely to achieve an OPS around 1.143. This median OPS is higher than both the median and mean OPS of 10 other players, which is around 0.933. His actual OPS in August and September 2024 was 1.210, which corresponds to approximately  $P(1.18 \leq X_{\text{Judge}} \leq 1.23) = 0.1486$, indicating a 14.86\% chance of falling within this range. Notably, his OPS in the second half of the season exceeded the expected value predicted by the Monte Carlo simulation. This improvement in OPS highlights his exceptional performance as a player. 
+  
+  Likewise, the CDF is particularly useful because it allows us to visualize the probability that a variable falls within a specific range. It helps quantify risks and ask probabilistic questions based on the simulation results.
+
+### OPS Comparison Among Players
+
+ Comparing the Monte Carlo simulated OPS with its actual value offers valuable insights into player performance. If the actual OPS is higher than the expected value, it indicates the player is performing above expectations, and if it is lower, the player is under-performing relative to the projection. Due to the length of the MLB season, it is challenging for players to maintain consistent performance throughout. Most players experience fatigue as the season progresses, particularly toward the end. Despite this, a player’s ability to sustain their performance until the season’s conclusion is a strong indicator of their consistency and resilience.
+  
+  As shown in the plot, each boxplot represents the simulated OPS for individual players, with the red dots indicating their actual OPS values during the second half of the season. By observing the positions of these red dots relative to the boxplot, we can assess how players performed compared to their simulations. The middle line within each box represents the simulated median, while the lower and upper edges correspond to the 25th and 75th percentiles, respectively.
+
+```{r, include=FALSE}
+comp_OPS <- data.frame(
+  Players = rep(plot_data$Players, sapply(plot_data$OBP, length)),
+  OPS = unlist(plot_data$OBP) + unlist(plot_SLG$SLG))
+
+# Create the box plot using ggplot2
+pl_ops <- ggplot(comp_OPS, aes(x = reorder(Players, -OPS, FUN = median), y = OPS, color=Players)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "black")) +
+  geom_point(data = monte_carlo_OPS, aes(x = reorder(Player, -actual_OPS), y = actual_OPS), 
+             color = "red", size = 4, shape = 18) + 
+  labs(title = "OPS Comparison Between Players", x = "Player", y = "OPS") +
+  theme(legend.position = "none")
+```
+  
+```{r, include=TRUE}
+pl_ops
+```
+
+Francisco Lindor of the New York Mets showed remarkable improvement in his OPS, recording a 0.956 OPS from August to September. This represents a 20% increase compared to the median and ranks as the third-highest among the ten players analyzed. Lindor’s exceptional OPS performance has carried into the MLB postseason, where his OPS currently stands at 0.893 after Game 4 of the NLCS against the Dodgers. 
+  
+  On the other hand, players like Soto, Ozuna, and Santander showed a significant decline in OPS. Based on this data, we can assess them as having under=performed compared to their expected performance. Moreover, Shohei Ohtani who made to the historic 50/50 club (50 Homeruns and 50 Stolen Bases) and a homerun leader, Aaron Judge, both performed better than expected from Monte-Carlo simulation. 
+  
+### Kernel Density Estimate (KDE) after Monte Carlo Simulation
+
+  In the context of Monte Carlo simulations, KDE (Kernel Density Estimate) plots in R are highly useful for visualizing the distribution of simulated OPS values. This allows us to estimate and visualize the probability density function of the simulated results, providing insight into where the most likely outcomes are and the overall spread of the results.
+
+```{r, include=TRUE}
+OPS_den_plot
+```
+  As shown in the plot, the top two players are Aaron Judge and Shohei Ohtani, both of whom are strong contenders for the 2024 MLB American and National League MVP awards. This visualization not only highlights their exceptional performance but also provides a clearer comparison with other players.
+
+# Discussion & Conclusion
+
+  The probabilistic approach to OPS analysis provides a unique perspective on player performance by modeling offensive outcomes using a multinomial distribution. Through Monte Carlo simulations, we can estimate future performance by approximating On-Base Percentage (OBP) and Slugging Percentage (SLG), which together offer a comprehensive view of a player’s offensive capability (OPS). This method has several important implications for player evaluation and decision-making in sabermetrics.
+  
+  The use of multinomial distribution to model OBP and SLG offers a more nuanced way of understanding player performance compared to traditional methods. Each at-bat is treated as a probabilistic event with multiple possible outcomes, such as singles, doubles, or walks, reflecting the inherent randomness in baseball. This allows us to account for the variability in a player’s performance over a large number of at-bats. By running Monte Carlo simulations based on these probabilities, we can generate a distribution of likely OPS values, offering a comprehensive understanding of a player’s offensive contributions to the teams.
+  
+  Nonetheless, this approach assumes independence between at-bats and doesn’t account for external factors like pitcher quality or game situations. Future models could integrate these factors for more accuracy. The model also focuses on offensive performance, disregarding the fact that defensive contributions and base-running could be included for a more comprehensive evaluation.
+  
+  Furthermore, another issue arose when I treated each game as an independent event, ignoring the possibility of game-to-game dependencies, such as player fatigue or momentum. In reality, hitting performance can be influenced by previous games, player confidence, or injuries, which introduced dependencies between games that were not captured by my multinomial model. This resulted in overly simplistic projections that failed to reflect the impact of streaks and slumps on OPS.
+
+  By applying Monte Carlo simulations to OPS analysis, despite limitations, this study offers a detailed, probabilistic framework for evaluating player performance. This method enhances the ability to estimate better offensive contributions and assess players’ performances, with potential for wide-ranging applications in baseball sabermetrics.
+
